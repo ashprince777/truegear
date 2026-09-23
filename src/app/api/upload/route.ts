@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+
 // Storage adapter interface (can easily swap to S3 or Cloudinary)
 export async function POST(request: NextRequest) {
   try {

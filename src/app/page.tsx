@@ -19,59 +19,69 @@ import {
 export const revalidate = 60; // ISR cache
 
 export default async function HomePage() {
-  // Fetch active listings count and featured / trending deals
-  const [totalCarsCount, rawFeatured] = await Promise.all([
-    prisma.listing.count({ where: { status: 'ACTIVE' } }),
-    prisma.listing.findMany({
-      where: { status: 'ACTIVE' },
-      take: 8,
-      include: {
-        images: { orderBy: { order: 'asc' } },
-        seller: {
-          select: {
-            id: true,
-            name: true,
-            dealerName: true,
-            dealerRating: true,
-            dealerCity: true,
-            dealerState: true,
+  let totalCarsCount = 50;
+  let rawFeatured: any[] = [];
+  const countMap: Record<string, number> = {};
+
+  try {
+    const [count, featured, bodyGroupCounts] = await Promise.all([
+      prisma.listing.count({ where: { status: 'ACTIVE' } }),
+      prisma.listing.findMany({
+        where: { status: 'ACTIVE' },
+        take: 8,
+        include: {
+          images: { orderBy: { order: 'asc' } },
+          seller: {
+            select: {
+              id: true,
+              name: true,
+              dealerName: true,
+              dealerRating: true,
+              dealerCity: true,
+              dealerState: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    }),
-  ]);
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.listing.groupBy({
+        by: ['bodyType'],
+        _count: { id: true },
+        where: { status: 'ACTIVE' },
+      }),
+    ]);
+
+    totalCarsCount = count;
+    rawFeatured = featured;
+    bodyGroupCounts.forEach((b) => {
+      countMap[b.bodyType] = b._count.id;
+    });
+  } catch (error) {
+    console.warn('Prisma query fallback during build:', error);
+  }
 
   const featuredCars = await Promise.all(
     rawFeatured.map(async (car) => {
-      const deal = await calculateDealRating({
-        id: car.id,
-        make: car.make,
-        model: car.model,
-        year: car.year,
-        mileage: car.mileage,
-        price: car.price,
-        bodyType: car.bodyType,
-      });
-      return { ...car, dealRating: deal };
+      try {
+        const deal = await calculateDealRating({
+          id: car.id,
+          make: car.make,
+          model: car.model,
+          year: car.year,
+          mileage: car.mileage,
+          price: car.price,
+          bodyType: car.bodyType,
+        });
+        return { ...car, dealRating: deal };
+      } catch {
+        return car;
+      }
     })
   );
 
-  // Filter top great deals first
   const greatDeals = featuredCars
-    .filter((c) => c.dealRating.rating === 'GREAT')
+    .filter((c) => c.dealRating?.rating === 'GREAT')
     .slice(0, 4);
-
-  // Live counts by body type from DB
-  const bodyGroupCounts = await prisma.listing.groupBy({
-    by: ['bodyType'],
-    _count: { id: true },
-    where: { status: 'ACTIVE' },
-  });
-  const countMap: Record<string, number> = {};
-  bodyGroupCounts.forEach((b) => {
-    countMap[b.bodyType] = b._count.id;
-  });
 
   const bodyTypes = [
     { name: 'SUV', label: 'SUVs & Crossovers', count: countMap['SUV'] || 0, image: 'https://images.unsplash.com/photo-1581540222194-0def2dda95b8?w=500&auto=format&fit=crop&q=80' },

@@ -34,6 +34,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# SQLite Database (optional: seed script is available)
-prisma/*.db
+# SQLite Database temporary journals
 prisma/*.db-journal
